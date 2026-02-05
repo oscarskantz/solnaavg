@@ -1,0 +1,116 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Solna Departures</title>
+  <style>
+    body { font-family: system-ui, sans-serif; margin: 24px; }
+    h1 { margin: 0 0 12px; font-size: 28px; }
+    table { width: 100%; border-collapse: collapse; font-size: 20px; }
+    th, td { padding: 10px 8px; border-bottom: 1px solid #ddd; }
+    th { text-align: left; font-weight: 600; }
+    .muted { opacity: 0.7; font-size: 14px; margin-top: 10px; }
+    .error { color: #b00; font-size: 16px; margin-top: 10px; }
+  </style>
+</head>
+<body>
+  <h1 id="title">Solna – Avgångar Tunnelbanan</h1>
+
+  <table>
+    <thead>
+      <tr>
+        <th>Time</th>
+        <th>Line</th>
+        <th>To</th>
+        <th>Platform</th>
+      </tr>
+    </thead>
+    <tbody id="rows">
+      <tr><td colspan="4">Uppdaterar…</td></tr>
+    </tbody>
+  </table>
+
+  <div class="muted" id="updated"></div>
+  <div class="muted">data from Trafiklab.se</div>
+  <div class="error" id="err"></div>
+
+  <script>
+    const API_KEY = "3dd8286df2134773827fafe73cefa7cf";
+    const AREA_ID = "740098534";
+    const REFRESH_MS = 30000;
+    const ONLY_LINE = "11";
+
+    function pickTime(obj) {
+      const t = obj.realtime || obj.rt || obj.time || obj.departure_time || obj.scheduled || obj.st || "";
+      if (typeof t === "string" && t.includes("T")) return t.slice(11, 16);
+      return typeof t === "string" ? t : "";
+    }
+
+    function pickLine(obj) {
+      return obj.line || obj.route?.designation || obj.route_id || obj.transport?.line || "";
+    }
+
+    function pickDestination(obj) {
+      return obj.destination || obj.route?.direction || obj.direction || obj.to || obj.destination?.name || "";
+    }
+
+    function pickPlatform(obj) {
+      return obj.platform || obj.stop?.platform || obj.track || "";
+    }
+
+    async function load() {
+      const errEl = document.getElementById("err");
+      errEl.textContent = "";
+
+      const url = `https://realtime-api.trafiklab.se/v1/departures/${AREA_ID}?key=${API_KEY}`;
+
+      try {
+        const res = await fetch(url, { cache: "no-store" });
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}`);
+        }
+
+        const data = await res.json();
+
+        const list =
+          data?.departures ||
+          data?.stop_times ||
+          data?.stopTimes ||
+          data?.data ||
+          [];
+
+        const tbody = document.getElementById("rows");
+        tbody.innerHTML = "";
+
+        const filtered = list.filter(d => pickLine(d) === ONLY_LINE);
+
+        if (filtered.length === 0) {
+          tbody.innerHTML = `<tr><td colspan="4">Inga avgångar för linje 11</td></tr>`;
+        } else {
+          for (const d of filtered.slice(0, 8)) {
+            const tr = document.createElement("tr");
+            tr.innerHTML = `
+              <td>${pickTime(d)}</td>
+              <td>${pickLine(d)}</td>
+              <td>${pickDestination(d)}</td>
+              <td>${pickPlatform(d)}</td>
+            `;
+            tbody.appendChild(tr);
+          }
+        }
+
+        const now = new Date();
+        document.getElementById("updated").textContent =
+          `Updated: ${now.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })}`;
+
+      } catch (e) {
+        errEl.textContent = `Error loading departures: ${e.message}`;
+      }
+    }
+
+    load();
+    setInterval(load, REFRESH_MS);
+  </script>
+</body>
+</html>
